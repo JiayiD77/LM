@@ -80,7 +80,8 @@ class Head(nn.Module):
         return out
 
 class MultiHeadAttention(nn.Module):
-     
+    """Multi head self-attention"""
+
     def __init__(self, num_heads, head_size):
          super().__init__()
          self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
@@ -88,7 +89,16 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x):
         return torch.cat([h(x) for h in self.heads], dim=-1)
 
-
+class FeadForward(nn.Module):
+    """Single Linear layer"""
+    def __init__(self, n_embd):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, n_embd),
+            nn.ReLU())
+        
+    def forward(self, x):
+        return self.net(x)
 
 # The nanoGPT in build
 class Improving(nn.Module):
@@ -98,6 +108,7 @@ class Improving(nn.Module):
         self.token_embedding_table = nn.Embedding(n_vocabs, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.sa_heads = MultiHeadAttention(4, n_embd//4)
+        self.feedforward = FeadForward(n_embd)
         self.lm_head = nn.Linear(n_embd, n_vocabs)
     
     def forward(self, idx, targets=None):
@@ -108,6 +119,7 @@ class Improving(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T * C)
         x = tok_emb + pos_emb # (B * T * C)
         x = self.sa_heads(x)
+        x = self.feedforward(x)
         logits = self.lm_head(x) # (B * T * n_vocabs)
 
         if targets == None:
