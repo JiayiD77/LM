@@ -100,6 +100,19 @@ class FeadForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class Block(nn.Module):
+    """A transformer block"""
+    def __init__(self, n_embd, n_head):
+        super().__init__()
+        head_size = n_embd // n_head
+        self.sa_heads = MultiHeadAttention(n_head, head_size)
+        self.feedforward = FeadForward(n_embd)
+
+    def forward(self, x):
+        x = self.sa_heads(x)
+        x = self.feedforward(x)
+        return x
+    
 # The nanoGPT in build
 class Improving(nn.Module):
 
@@ -107,8 +120,11 @@ class Improving(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(n_vocabs, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.sa_heads = MultiHeadAttention(4, n_embd//4)
-        self.feedforward = FeadForward(n_embd)
+        self.blocks = nn.Sequential(
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4),
+            Block(n_embd, n_head=4)
+        )
         self.lm_head = nn.Linear(n_embd, n_vocabs)
     
     def forward(self, idx, targets=None):
@@ -118,8 +134,7 @@ class Improving(nn.Module):
         tok_emb = self.token_embedding_table(idx) # (B * T * C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T * C)
         x = tok_emb + pos_emb # (B * T * C)
-        x = self.sa_heads(x)
-        x = self.feedforward(x)
+        x = self.blocks(x)
         logits = self.lm_head(x) # (B * T * n_vocabs)
 
         if targets == None:
