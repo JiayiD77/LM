@@ -3,15 +3,19 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 # hyperparameters
-batch_size = 32
-block_size = 8
+batch_size = 64
+block_size = 256
 max_iters = 5000
 eval_interval = 500
-learning_rate = 1e-3
+learning_rate = 3e-4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
-n_embd = 32
+n_embd = 192    
+n_head = 6
+n_layer = 4
+drop_out = 0.2
 #---------------
+
 
 torch.manual_seed(42)
 
@@ -56,6 +60,7 @@ def estimate_loss():
     model.train()
     return out
 
+
 class Head(nn.Module):
     """Single Head self-attention"""
 
@@ -65,6 +70,7 @@ class Head(nn.Module):
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.dropout = nn.Dropout(drop_out)
 
     def forward(self, x):
         B,T,C = x.shape
@@ -74,6 +80,7 @@ class Head(nn.Module):
         wei = q @ k.transpose(-2, -1) * C**-.5 # (B * T * T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1)
+        wei = self.dropout(wei)
 
         v = self.value(x)
         out = wei@v
@@ -83,19 +90,25 @@ class MultiHeadAttention(nn.Module):
     """Multi head self-attention"""
 
     def __init__(self, num_heads, head_size):
-         super().__init__()
-         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(n_embd, n_embd)
+        self.dropout = nn.Dropout(drop_out)
 
     def forward(self, x):
-        return torch.cat([h(x) for h in self.heads], dim=-1)
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.dropout(self.proj(out))
+        return out
 
 class FeadForward(nn.Module):
     """Single Linear layer"""
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, n_embd),
-            nn.ReLU())
+            nn.Linear(n_embd, n_embd * 4),
+            nn.ReLU(),
+            nn.Linear(n_embd * 4, n_embd),
+            nn.Dropout(drop_out))
         
     def forward(self, x):
         return self.net(x)
@@ -107,24 +120,24 @@ class Block(nn.Module):
         head_size = n_embd // n_head
         self.sa_heads = MultiHeadAttention(n_head, head_size)
         self.feedforward = FeadForward(n_embd)
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
-        x = self.sa_heads(x)
-        x = self.feedforward(x)
+        x = x + self.sa_heads(self.ln1(x))
+        x = x + self.feedforward(self.ln2(x))
         return x
     
+
 # The nanoGPT in build
-class Improving(nn.Module):
+class SimilarTextGenerator(nn.Module):
 
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(n_vocabs, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(
-            Block(n_embd, n_head=4),
-            Block(n_embd, n_head=4),
-            Block(n_embd, n_head=4)
-        )
+        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
+        self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, n_vocabs)
     
     def forward(self, idx, targets=None):
@@ -135,6 +148,7 @@ class Improving(nn.Module):
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T * C)
         x = tok_emb + pos_emb # (B * T * C)
         x = self.blocks(x)
+        x = self.ln_f(x)
         logits = self.lm_head(x) # (B * T * n_vocabs)
 
         if targets == None:
@@ -165,7 +179,7 @@ class Improving(nn.Module):
         
         return idx
     
-model = Improving().to(device)
+model = SimilarTextGenerator().to(device)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
@@ -186,4 +200,4 @@ for steps in range(max_iters):
     optimizer.step()
 
 context = torch.zeros((1,1), dtype=torch.long, device=device)
-print(decode(model.generate(context, 1000)[0].tolist()))
+print(decode(model.generate(context, 10000)[0].tolist()))
