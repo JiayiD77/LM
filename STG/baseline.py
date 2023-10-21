@@ -14,7 +14,7 @@ eval_iters = 200
 
 torch.manual_seed(42)
 
-with open('input.txt', 'r', encoding='utf-8') as f:
+with open('Training texts/input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # All the characters in the text
