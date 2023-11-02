@@ -1,35 +1,40 @@
-import concurrent.futures
-from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Manager
 
-class NeuronDict:
-    def __init__(self):
-        self.dict = defaultdict(list)
-    
-    def add_item(self, workers):  
-        for i in range(workers):
-            post = 10  
-            for j in range(5):
-                self.dict[str(j)].append((str(post), 1))
-                post += 1
-
-    def add_item_concurrent(self, workers):
-        post = 10
-
-        def add(post):
-            for j in range(5):
-                self.dict[str(j)].append((str(post), 1))
-                post += 1
-
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            results = executor.map(add, [post for i in range(workers)])
-            for result in results:
-                print(result)
+def update_dict(shared_dict, input):
+    # Update the shared dictionary
+    for key, value in input:
+        shared_dict[key] = value
 
 def main():
-    nd = NeuronDict()
-    nd.add_item_concurrent(3)
-    print(nd.dict.items())
+    # Create a manager object
+    with Manager() as manager:
+        # Create a shared dictionary
+        shared_dict = manager.dict()
 
+        # Initialize shared dictionary with some values
+        shared_dict['initial_key'] = 'initial_value'
 
-if __name__ == "__main__":
+        # List of keys and values to update the dictionary with
+        updates = [[(str(i), i) for i in range(1000)],
+                   [(str(i), i) for i in range(1000, 2000)],
+                   [(str(i), i) for i in range(2000, 3000)],
+        ]
+
+        # Use a ProcessPoolExecutor to update the shared dictionary
+        with ProcessPoolExecutor() as executor:
+            futures = []
+            for update in updates:
+                # Submit the update_dict function to the executor
+                future = executor.submit(update_dict, shared_dict, update)
+                futures.append(future)
+
+            # Wait for all submitted tasks to be completed
+            for future in futures:
+                future.result()
+
+        # Print the updated dictionary
+        print(dict(shared_dict))
+
+if __name__ == '__main__':
     main()
