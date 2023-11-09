@@ -1,6 +1,7 @@
 import torch 
 import torch.nn as nn
 from torch.nn import functional as F
+from local_attention import LocalAttention
 
 # hyperparameters
 batch_size = 64
