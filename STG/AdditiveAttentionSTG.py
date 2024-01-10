@@ -4,11 +4,11 @@ from torch.nn import functional as F
 from Attentions.additive_attention import AdditiveAttention
 
 # hyperparameters
-batch_size = 32
-block_size = 128
-max_iters = 1000
-eval_interval = 100
-learning_rate = 1e-3
+batch_size = 64
+block_size = 256
+max_iters = 350
+eval_interval = 50
+learning_rate = 3e-4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 100
 n_embd = 96    
@@ -202,4 +202,4 @@ for steps in range(max_iters):
     optimizer.step()
 
 context = torch.zeros((1,1), dtype=torch.long, device=device)
-print(decode(model.generate(context, 10000)[0].tolist()))
+print(decode(model.generate(context, 1000)[0].tolist()))
